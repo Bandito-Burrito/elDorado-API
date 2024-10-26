@@ -1,0 +1,33 @@
+Overview:
+
+-This is a locally stored application that accesses the internet.
+-This application uses a local sqlite database for data storage.
+-No files inside the directory should be moved or modified. 
+-The app automatically pauses every 100 calls, but users must allow time between button clicks to respect rate limits (~100 calls / minute)
+-This application is built for a specific excel template, but could be used with a different excel file if the columns and sheets are correctly labeled.
+-Necessary columns: NAME, FIRM, MAILING, CITY, STATE, FIRST, LAST, ZIP5
+-Primary data sheet name: Sheet1
+
+
+Start:
+-When you click the select file button, a file window pops up and allows you to select the location of your excel file.
+-Once your file is selected the application will check the first 5 rows of the NAME column and see if it contains values.
+
+-If there are no names, the application will assume this is a list of businesses and make a call to the Business API.
+-If there are names, the application will assume this is a list of people and make a call to the People API.
+
+Business API:
+-later
+
+
+Person API
+-For each record in Sheet1:
+-Your local sqlite database will be checked for a matching first name, last name, mailing address, and city + state
+-If their is a matching record in the database, we will extract phone information from the db and store records in a new sheet called duplicates.
+-Otherwise the application will send the first name, last name, mailing address, and city + state to the person API
+-If any of this information is missing the application will skip to the next record, and store the record in an incomplete data sheet.
+-The return values parsed from the api response are: first mobile number, first landline number, 
+and possibly second mobile (only if it is the second number returned and a first mobile already exists.)
+-The application will either return a match for the input, a match but no phone number, or no match, 
+and store each case in the respective excel sheet.
+-Each api call input will be added to the database, to avoid duplicate calls in the future.

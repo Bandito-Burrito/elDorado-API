@@ -1,0 +1,23 @@
+{
+  "name": "apicall",
+  "version": "1.0.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "npx electron .",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "electron": "^33.0.1"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "parse-full-name": "^1.2.6",
+    "sqlite3": "^5.1.7",
+    "string-similarity": "^4.0.4",
+    "xlsx": "^0.18.5"
+  }
+}
