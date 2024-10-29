@@ -1,5 +1,6 @@
 const { ipcRenderer } = require('electron')
 
+
 document.getElementById('selectFile').addEventListener('click', async () => {
   const filePath = await ipcRenderer.invoke('open-file-dialog')
   if (filePath) {
@@ -20,19 +21,14 @@ ipcRenderer.on('log', (event, message) => {
 
   logEntry.innerHTML = message.replace(/\n/g, '<br>');
 
+  const isAtBottom = logContainer.scrollHeight - logContainer.scrollTop - logContainer.clientHeight <= 5;
+
   logContainer.appendChild(logEntry);
 
-  // Use a timeout to let the DOM update before checking the scroll position
-  setTimeout(() => {
-    // Check if the user is at the bottom (or near the bottom)
-    const isAtBottom = logContainer.scrollHeight - logContainer.scrollTop - logContainer.clientHeight <= 5;
-
-    if (isAtBottom) {
-      // Auto-scroll to the bottom
-      logContainer.scrollTop = logContainer.scrollHeight;
-    }
-  }, 0);
-
+  if (isAtBottom) {
+    logContainer.scrollTop = logContainer.scrollHeight;
+  }
+  
 });
 
 document.getElementById('open-instructions').addEventListener('click', () => {

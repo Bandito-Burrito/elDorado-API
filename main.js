@@ -10,6 +10,8 @@ const { notEqual } = require('assert');
 
 var data = [];
 var expandedData = [];
+var ocAPIcount = 0;
+var endAPIcount = 0;
 
 function createWindow () {
   const win = new BrowserWindow({
@@ -137,11 +139,12 @@ async function makeApiCall(FirstName, LastName, addressLine1, addressLine2,rowOf
   var secondMobile = "";
   var matchValue = "";
 
-  if (rowOfExcel % 100 === 0 && rowOfExcel !== 0) {
+  if (endAPIcount % 100 === 0 && endAPIcount !== 0) {
     console.log(`Pausing for 1 minute at index ${rowOfExcel} to respect rate limits.`);
     await new Promise(resolve => setTimeout(resolve, 60000)); // 1 minute delay
   }
 
+  endAPIcount++;
 
   const options = {
     method: 'POST',
@@ -224,6 +227,7 @@ async function makeApiCall(FirstName, LastName, addressLine1, addressLine2,rowOf
   } catch (err) {
     // Handle any errors that occur during the fetch
     console.error('Error during API call:', err);
+    console.log('Error: ', err.message);
   }
 }
 
@@ -380,9 +384,12 @@ async function main(filePath, businessCall) {
 
 
   const db = await setupDatabase();
+  endAPIcount = 0;
+  ocAPIcount = 0;
 
   const workbook = XLSX.readFile(filePath);
-    var worksheet = workbook.Sheets["Sheet1"];
+  var worksheet = workbook.Sheets["Sheet1"];
+
 
   if (businessCall){
     var worksheet = workbook.Sheets["Business Match"];
@@ -395,7 +402,7 @@ async function main(filePath, businessCall) {
 
 
   data = XLSX.utils.sheet_to_json(worksheet);
-
+  
 
   await processRowsSequentially(data,db);
   var matchData=[];
@@ -572,14 +579,16 @@ async function makeApiCall2(searchName, jurisdictionCode, searchMailing, index, 
 
         officerArray.length = 0;
 
-        if (index % 50 === 0 && index !== 0) {
+        if (ocAPIcount % 100 === 0 && ocAPIcount !== 0) {
           console.log(`Pausing for 1 minute at index ${index} to respect rate limits.`);
           await new Promise(resolve => setTimeout(resolve, 60000)); // 1 minute delay
         }
 
-        const url = `https://api.opencorporates.com/v0.4/companies/search?q=${companyName}&jurisdiction_code=${jurisdictionCode}&order=score&normalise_company_name=true&api_token=${process.env.OC_KEY}`;
+        const url = `https://api.opencorporates.com/v0.4/companies/search?q=${searchName}&jurisdiction_code=${jurisdictionCode}&order=score&normalise_company_name=true&api_token=${process.env.OC_KEY}`;
 
         console.log("Making First call to Business API")
+        ocAPIcount++;
+
         const response = await fetch(url);
         const apiData = await response.json();
 
@@ -637,6 +646,7 @@ async function makeApiCall2(searchName, jurisdictionCode, searchMailing, index, 
 
             
             console.log("\nMaking Second call to Business API")
+            ocAPIcount++;
             console.log('Company ID:',companyID);
             console.log('\n');
 
@@ -733,6 +743,7 @@ async function makeApiCall2(searchName, jurisdictionCode, searchMailing, index, 
 
       } catch (error) {
         console.error('Error:', error);
+        console.log('Error: ', error.message);
       }
     }
 
