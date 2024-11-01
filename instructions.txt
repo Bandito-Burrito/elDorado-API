@@ -1,12 +1,43 @@
+User Agreement License
+
+-----------------------------------------------------------------
+
+By using this software, you agree to the following terms:
+
+    Usage: You are granted a non-transferable, non-exclusive license to use the software as per our agreed terms.
+    Restrictions: You may not sell, distribute, sublicense, or modify the software without explicit permission.
+    Ownership: All rights remain with the developer.
+    Liability: This software is provided "as-is" without warranties. The developer is not liable for any damages resulting from its use.
+
+By using this software, you accept these terms.
+
+-----------------------------------------------------------------
+
+
+
+
+
+
+Instructions Below
+
+
+
+
+
+
+----------------------------------------------------------------
+
+
 Overview:
 
 -This is a locally stored application that accesses the internet.
 -This application uses a local sqlite database for data storage.
 -No files inside the directory should be moved or modified. 
 -The app automatically pauses every 100 calls, but users must allow time between button clicks to respect rate limits (~100 calls / minute)
+-If rate limits are hit, the application will stop and any unprocessed records will be stored in a not processed sheet.
 -This application is built for a specific excel template, but could be used with a different excel file if the columns and sheets are correctly labeled.
 -Necessary columns: NAME, FIRM, MAILING, CITY, STATE, FIRST, LAST, ZIP5
--Primary data sheet name: Sheet1
+-Sheet name where necessary columns are contained: Sheet1
 
 
 Start:
@@ -17,13 +48,24 @@ Start:
 -If there are names, the application will assume this is a list of people and make a call to the People API.
 
 Business API:
--later
+-For each record in Sheet1
+-Your local sqlite database will be checked for a matching combo of company name, state, and mailing address
+-If there is a matching record in the database, we will extract the previously acquired data for that record
+-Otherwise we will make a call to the open corporates api and pass the company name, and state into the call
+-If more than one company is returned, we will do a statistical analysis on the companies mailing addresses and find the closest match to our record
+-If there is a valid match we will extract the company ID
+-Using the company id we will make a second call to a different open corporates API endpoint. 
+-We will check the returned data for officer information
+-If the officer titles are not agent, secretary, or treasurer, we will return up to 2 agent names from the list.
+-We will ignore the officer position if the officer name is a relative (Same last name different first name) of a previously imported officer.
+-We will sort records that return officer names into a sheet called Business Match, otherwise records will be stored in Business No Match.
+-The Business Match sheet will be passed into the Person API below
 
 
 Person API
--For each record in Sheet1:
+-For each record in ("Sheet1" if not a business call, "Business Match" if business call):
 -Your local sqlite database will be checked for a matching first name, last name, mailing address, and city + state
--If their is a matching record in the database, we will extract phone information from the db and store records in a new sheet called duplicates.
+-If there is a matching record in the database, we will extract phone information from the db and store records in a sheet called duplicates.
 -Otherwise the application will send the first name, last name, mailing address, and city + state to the person API
 -If any of this information is missing the application will skip to the next record, and store the record in an incomplete data sheet.
 -The return values parsed from the api response are: first mobile number, first landline number, 
@@ -31,3 +73,4 @@ and possibly second mobile (only if it is the second number returned and a first
 -The application will either return a match for the input, a match but no phone number, or no match, 
 and store each case in the respective excel sheet.
 -Each api call input will be added to the database, to avoid duplicate calls in the future.
+

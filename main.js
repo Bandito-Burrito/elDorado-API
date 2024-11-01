@@ -5,7 +5,6 @@ const XLSX = require('xlsx');
 const path = require('path');
 var parseFullName = require('parse-full-name').parseFullName;
 var stringSimilarity = require("string-similarity");
-const { notEqual } = require('assert');
 
 
 var data = [];
@@ -70,6 +69,7 @@ ipcMain.on('selected-file', (event, filePath) => {
     data = XLSX.utils.sheet_to_json(worksheet);
 
     var namesPresent = false;
+    var firmsPresent = false;
 
     var minRows = Math.min(data.length, 5);
 
@@ -80,10 +80,23 @@ ipcMain.on('selected-file', (event, filePath) => {
       }
     }
 
+    for (var i = 0; i < minRows; i++) {
+      if (data[i]['FIRM']) {
+        firmsPresent = true;
+        break;
+      }
+    }
+
     if (namesPresent) {
       console.log('Names found in column NAME. Proceeding with People API Call.');
 
-      main(filePath)
+      let businessCall = false;
+
+      if(firmsPresent){
+        businessCall = true;
+      }
+
+      main(filePath, businessCall)
       .then(() => {
         console.log("\n");
         console.log('👍👍👍Execution completed successfully with no errors.👍👍👍');
@@ -132,7 +145,7 @@ ipcMain.on('selected-file', (event, filePath) => {
   })
 
 
-async function makeApiCall(FirstName, LastName, addressLine1, addressLine2,rowOfExcel,db) {
+async function makeApiCall(FirstName, LastName, addressLine1, addressLine2, rowOfExcel,db, businessCall) {
 
   var firstMobile = "";
   var firstLandline = "";
@@ -144,7 +157,7 @@ async function makeApiCall(FirstName, LastName, addressLine1, addressLine2,rowOf
     await new Promise(resolve => setTimeout(resolve, 60000)); // 1 minute delay
   }
 
-  endAPIcount++;
+
 
   const options = {
     method: 'POST',
@@ -170,8 +183,13 @@ async function makeApiCall(FirstName, LastName, addressLine1, addressLine2,rowOf
     const response = await fetch('https://devapi.endato.com/Contact/Enrich', options);
 
     const jsonResponse = await response.json();
+    endAPIcount++;
 
-
+    if (response.status !== 200) {
+      console.log('API Error:', response.status);
+      console.error('API Error:', response.status);
+      return response.status;
+    }
 
     if (jsonResponse && jsonResponse.person) {
       data[rowOfExcel] ['MATCH'] = 'Yes';
@@ -220,9 +238,11 @@ async function makeApiCall(FirstName, LastName, addressLine1, addressLine2,rowOf
       matchValue = jsonResponse.message;
     }
     
-
+    if(!businessCall){
     await insertRecord(FirstName, LastName, addressLine1, addressLine2, firstMobile, firstLandline, secondMobile, matchValue, db);
-
+    }else{
+    await insertRecord3(data[rowOfExcel]['FIRM'], FirstName, LastName, addressLine2, firstMobile, firstLandline, secondMobile, matchValue, db);
+    }  
     return jsonResponse;
   } catch (err) {
     // Handle any errors that occur during the fetch
@@ -232,23 +252,39 @@ async function makeApiCall(FirstName, LastName, addressLine1, addressLine2,rowOf
 }
 
 
-async function processRowsSequentially(data,db) {
+async function processRowsSequentially(data,db,businessCall) {
   for (const [index , row] of data.entries()) {
 
     const FirstName = row['FIRST'];
     const LastName = row['LAST'];
-    const addressLine1 = row['MAILING'];
-    const addressLine2 = `${row['CITY']}, ${row['STATE']}`;
 
+    if (businessCall){
+    var addressLine1 = null;
+    var addressLine2 = `${row['ZIP5']}`;
+
+    }else{
+    var addressLine1 = row['MAILING'];
+    var addressLine2 = `${row['CITY']}, ${row['STATE']}`;
+    }
 
     console.log('\nProcessing:', index+1, FirstName, LastName, addressLine1, addressLine2);
 
+    if (!businessCall){
     if (!FirstName || !LastName || !addressLine1 || !addressLine2) {
-      console.log('Skipping row due to missing data:', index);
+      console.log('Skipping row due to missing data:');
       data[index]['MATCH'] = 'Incomplete Data';
       continue;
     }
+    }
+    else{
+      if (!FirstName || !LastName || !addressLine2) {
+        console.log('Skipping row due to missing data:');
+        data[index]['MATCH'] = 'Incomplete Data';
+        continue;
+      }
+    }
 
+    if(!businessCall){
     const isDuplicate = await checkForDuplicate(FirstName, LastName, addressLine1, addressLine2,db);
     if (isDuplicate) {
       console.log('Duplicate record found. Skipping API call');
@@ -263,9 +299,29 @@ async function processRowsSequentially(data,db) {
 
       continue;
     }
+    }else{
+    const isDuplicate = await checkForDuplicate3(row['FIRM'], FirstName, LastName, addressLine2, db);
+    if (isDuplicate) {
+      console.log('Duplicate record found. Skipping API call');
+      
+      const duplicateFields = await getAdditionalFields3(row['FIRM'], FirstName, LastName, addressLine2, db);
 
-      await makeApiCall(FirstName, LastName, addressLine1, addressLine2, index, db);
-  
+      data[index]['MATCH'] = 'Duplicate';
+      data[index]['First Mobile'] = duplicateFields.FirstMobile || '';
+      data[index]['First Landline'] = duplicateFields.FirstLandline || '';
+      data[index]['Second Mobile (if applicable)'] = duplicateFields.SecondMobile || '';
+      data[index]['Initial Match'] = duplicateFields.InitialMatch || '';
+
+      continue;
+    }
+    }
+
+    const status =  await makeApiCall(FirstName, LastName, addressLine1, addressLine2, index, db, businessCall);
+    if (status == 403){
+      console.log('Rate Limit Exceeded. Ending Execution');
+      break;
+    }
+
 
     
   }
@@ -288,6 +344,24 @@ function checkForDuplicate(FirstName, LastName, AddressLine1, AddressLine2,db) {
   });
 }
 
+function checkForDuplicate3(Firm, FirstName, LastName, AddressLine2, db) {
+  return new Promise((resolve, reject) => {
+    const query = `
+      SELECT COUNT(*) as count FROM records
+      WHERE Firm = ? AND FirstName = ? AND LastName = ? AND AddressLine2 = ?
+    `;
+    db.get(query, [Firm, FirstName, LastName, AddressLine2], (err, row) => {
+      if (err) {
+        console.error('Error checking for duplicate:', err.message);
+        reject(err);
+      } else {
+        resolve(row.count > 0);
+      }
+    });
+  });
+}
+
+
 function getAdditionalFields(FirstName, LastName, AddressLine1, AddressLine2, db) {
   return new Promise((resolve, reject) => {
     const query = `
@@ -295,6 +369,23 @@ function getAdditionalFields(FirstName, LastName, AddressLine1, AddressLine2, db
       WHERE FirstName = ? AND LastName = ? AND AddressLine1 = ? AND AddressLine2 = ?
     `;
     db.get(query, [FirstName, LastName, AddressLine1, AddressLine2], (err, row) => {
+      if (err) {
+        console.error('Error fetching additional fields:', err.message);
+        reject(err);
+      } else {
+        resolve(row);
+      }
+    });
+  });
+}
+
+function getAdditionalFields3(Firm, FirstName, LastName, AddressLine2, db) {
+  return new Promise((resolve, reject) => {
+    const query = `
+      SELECT FirstMobile, FirstLandline, SecondMobile, InitialMatch FROM records
+      WHERE Firm = ? AND FirstName = ? AND LastName = ? AND AddressLine2 = ?
+    `;
+    db.get(query, [Firm, FirstName, LastName, AddressLine2], (err, row) => {
       if (err) {
         console.error('Error fetching additional fields:', err.message);
         reject(err);
@@ -313,6 +404,30 @@ function insertRecord(FirstName, LastName, AddressLine1, AddressLine2, FirstMobi
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `;
     db.run(query, [FirstName, LastName, AddressLine1, AddressLine2, FirstMobile, FirstLandline, SecondMobile, InitialMatch], function(err) {
+      if (err) {
+        // Handle unique constraint violation (duplicate record)
+        if (err.message.includes('UNIQUE constraint failed')) {
+          console.log('Record already exists in the database.');
+          resolve(false);
+        } else {
+          console.error('Error inserting record:', err.message);
+          reject(err);
+        }
+      } else {
+        console.log('Record inserted into database, index:', this.lastID);
+        resolve(true);
+      }
+    });
+  });
+}
+
+function insertRecord3(Firm, FirstName, LastName, AddressLine2, FirstMobile, FirstLandline, SecondMobile, InitialMatch, db) {
+  return new Promise((resolve, reject) => {
+    const query = `
+      INSERT INTO records (Firm, FirstName, LastName, AddressLine2, FirstMobile, FirstLandline, SecondMobile, InitialMatch)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+    db.run(query, [Firm, FirstName, LastName, AddressLine2, FirstMobile, FirstLandline, SecondMobile, InitialMatch], function(err) {
       if (err) {
         // Handle unique constraint violation (duplicate record)
         if (err.message.includes('UNIQUE constraint failed')) {
@@ -367,6 +482,43 @@ async function setupDatabase() {
   });
 }
 
+async function setupDatabase3() {
+  return new Promise((resolve, reject) => {
+    const db = new sqlite3.Database('./businessPersonal.db', (err) => {
+      if (err) {
+        console.error('Error opening database:', err.message);
+        reject(err); // Reject promise if there's an error
+      } else {
+        console.log('\nConnected to the SQLite business-people database.');
+
+        db.serialize(() => {
+          db.run(`
+            CREATE TABLE IF NOT EXISTS records (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              Firm TEXT NOT NULL,
+              FirstName TEXT NOT NULL,
+              LastName TEXT NOT NULL,
+              AddressLine2 TEXT NOT NULL,
+              FirstMobile TEXT,   
+              FirstLandline TEXT, 
+              SecondMobile TEXT, 
+              InitialMatch TEXT, 
+              UNIQUE(Firm, FirstName, LastName, AddressLine2)
+            )
+          `, (err) => {
+            if (err) {
+              console.error('Error creating table:', err.message);
+              reject(err); // Reject if table creation fails
+            } else {
+              resolve(db); // Resolve the promise when successful
+            }
+          });
+        });
+      }
+    });
+  });
+}
+
 ipcMain.on('open-instructions', () => {
 
   const instructionsPath = path.join(__dirname, 'instructions.txt'); 
@@ -382,13 +534,17 @@ ipcMain.on('open-instructions', () => {
 
 async function main(filePath, businessCall) {
 
+  if(businessCall){
+  var db = await setupDatabase3(); //unique records for business calls are firm fname lname and zip only
+  }else{
+  var db = await setupDatabase(); //unique records for personal calls are fname lname and full address
+  }
 
-  const db = await setupDatabase();
   endAPIcount = 0;
   ocAPIcount = 0;
 
   const workbook = XLSX.readFile(filePath);
-  var worksheet = workbook.Sheets["Sheet1"];
+
 
 
   if (businessCall){
@@ -397,6 +553,7 @@ async function main(filePath, businessCall) {
   }
   else
   {
+    var worksheet = workbook.Sheets["Sheet1"];
     console.log('\nPulling data from "Sheet1" of the Excel file...');
   }
 
@@ -404,14 +561,47 @@ async function main(filePath, businessCall) {
   data = XLSX.utils.sheet_to_json(worksheet);
   
 
-  await processRowsSequentially(data,db);
+  await processRowsSequentially(data,db,businessCall);
+
+  if (businessCall){
+
+  let previousCompanyName ="";
+  let previousCompanyOfficerName = "";
+  let previousCompanyOfficerPosition = "";
+  let previousCompanyFM = "";
+  let previousCompanyFL = "";
+  let previousCompanySM = "";
+
+
+  var newData = [];
+
+  data.forEach((firm) => {
+
+    if (previousCompanyName === firm.FIRM && previousCompanyName !== "") {
+      const newDataLength = newData.length;
+      newData[newDataLength - 1]['Officer Name 2'] = firm['Officer Name'];
+      newData[newDataLength - 1]['Officer Position 2'] = firm['Officer Position'];
+      newData[newDataLength - 1]['First Mobile 2'] = firm['First Mobile'];
+      newData[newDataLength - 1]['First Landline 2'] = firm['First Landline'];
+      newData[newDataLength - 1]['Second Mobile 2'] = firm['Second Mobile (if applicable)'];
+    }
+    else{
+      newData.push({ ...firm });
+    }
+    previousCompanyName = firm['FIRM'];
+  });
+
+  }
+
   var matchData=[];
   var noMatchData=[];
   var matchNoNumber=[];
   var duplicateData=[];
   var incompleteData=[];
+  var notProcessed=[];
 
 
+if (!businessCall){
 data.forEach((row) => {
   switch (row.MATCH) {
     case "Yes":
@@ -429,12 +619,45 @@ data.forEach((row) => {
     case "Incomplete Data":
       incompleteData.push(row);
       break;
+    
+    case "":
+      notProcessed.push(row);
+      break;
       
     default:
       noMatchData.push(row);
       break;
   }
 });
+}else{
+  newData.forEach((row) => {
+    switch (row.MATCH) {
+      case "Yes":
+        matchData.push(row);
+        break;
+        
+      case "Match No Phone":
+        matchNoNumber.push(row);
+        break;
+        
+      case "Duplicate":
+        duplicateData.push(row);
+        break;
+  
+      case "Incomplete Data":
+        incompleteData.push(row);
+        break;
+      
+      case "":
+        notProcessed.push(row);
+        break;
+        
+      default:
+        noMatchData.push(row);
+        break;
+    }
+  });
+}
 
 
 const matchWorksheet = XLSX.utils.json_to_sheet(matchData);
@@ -442,6 +665,7 @@ const noMatchWorksheet = XLSX.utils.json_to_sheet(noMatchData);
 const matchNoNumberWorksheet = XLSX.utils.json_to_sheet(matchNoNumber);
 const duplicateWorksheet = XLSX.utils.json_to_sheet(duplicateData);
 const incompleteDataWorksheet = XLSX.utils.json_to_sheet(incompleteData);
+const notProcessedWorksheet = XLSX.utils.json_to_sheet(notProcessed);
   
 
   console.log("\n");
@@ -493,6 +717,16 @@ const incompleteDataWorksheet = XLSX.utils.json_to_sheet(incompleteData);
 
     XLSX.utils.book_append_sheet(workbook, incompleteDataWorksheet, "Incomplete Data");
     console.log(`Created new Excel sheet: Incomplete Data`);
+  }
+
+  if (workbook.Sheets["Not Processed"]) {
+
+    workbook.Sheets["Not Processed"] = notProcessedWorksheet;
+    console.log(`Overwrote existing Excel sheet: Not Processed`);
+  } else {
+
+    XLSX.utils.book_append_sheet(workbook, notProcessedWorksheet, "Not Processed");
+    console.log(`Created new Excel sheet: Not Processed`);
   }
 
 
@@ -587,10 +821,18 @@ async function makeApiCall2(searchName, jurisdictionCode, searchMailing, index, 
         const url = `https://api.opencorporates.com/v0.4/companies/search?q=${searchName}&jurisdiction_code=${jurisdictionCode}&order=score&normalise_company_name=true&api_token=${process.env.OC_KEY}`;
 
         console.log("Making First call to Business API")
-        ocAPIcount++;
+ 
 
         const response = await fetch(url);
         const apiData = await response.json();
+
+        ocAPIcount++;
+
+        if (response.status !== 200) {
+          console.log('API Error:', response.status);
+          console.error('API Error:', response.status);
+          return response.status;
+        }
 
         const companies = apiData.results.companies;
 
@@ -646,20 +888,27 @@ async function makeApiCall2(searchName, jurisdictionCode, searchMailing, index, 
 
             
             console.log("\nMaking Second call to Business API")
-            ocAPIcount++;
+
             console.log('Company ID:',companyID);
             console.log('\n');
 
             const detailUrl = `https://api.opencorporates.com/v0.4/companies/${jurisdictionCode}/${companyID}?api_token=${process.env.OC_KEY}`;
             const detailResponse = await fetch(detailUrl);
+            ocAPIcount++;
             const detailData = await detailResponse.json();
             
+            if (detailResponse.status !== 200) {
+              console.log('API Error:', detailResponse.status);
+              console.error('API Error:', detailResponse.status);
+              return detailResponse.status;
+            }
 
             // Extract specific ownership information
             const companyDetails = detailData.results.company;
 
             const processedNames = new Set();
             const processedLastNames = new Set();
+            let takenNames = 0;
             
             if (companyDetails.officers && companyDetails.officers.length > 0) {
               let officersFound = false;
@@ -671,6 +920,10 @@ async function makeApiCall2(searchName, jurisdictionCode, searchMailing, index, 
 
                 if (processedNames.has(fullNameKey)) {
                   return; // Skip duplicate first + last names
+                }
+
+                if (takenNames >= 2) {
+                  return; // Skip more than 2 officers
                 }
 
                 const lastNameDifferentFirst = processedLastNames.has(nameObject.last.toLocaleLowerCase()) && !processedNames.has(fullNameKey);
@@ -694,7 +947,8 @@ async function makeApiCall2(searchName, jurisdictionCode, searchMailing, index, 
               
 
                 officerArray.push({OfficerName: officerData.officer.name, Title: officerData.officer.position});
-                
+                takenNames++;
+
                 // Push the complete row to expandedData
                 expandedData.push(newRow);
                 officersFound = true;
@@ -839,7 +1093,18 @@ async function processRowsSequentially2(data,dbBusiness) {
       const searchName = encodeURIComponent(companyName);
 
 
-      await makeApiCall2(searchName, jurisdictionCode, searchMailing, index, dbBusiness);
+     const status = await makeApiCall2(searchName, jurisdictionCode, searchMailing, index, dbBusiness);
+
+     if (status == 403){
+      console.log('Rate Limit Exceeded. Ending Execution');
+
+      for (let remainingIndex = index; remainingIndex < data.length; remainingIndex++) {
+        let newRow = { ...data[remainingIndex] };
+        expandedData.push(newRow);
+      }      
+
+      break;
+     }
     
   }
 }
@@ -877,8 +1142,8 @@ async function setupDatabase2() {
             CREATE TABLE IF NOT EXISTS officers (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               record_id INTEGER NOT NULL,
-              OfficerName TEXT NOT NULL,
-              Title TEXT NOT NULL,
+              OfficerName TEXT,
+              Title TEXT,
               FOREIGN KEY(record_id) REFERENCES records(id) ON DELETE CASCADE
             )
           `, (err) => {
@@ -916,13 +1181,17 @@ async function main2(filePath) {
 
   var matchData=[];
   var noMatchData=[];
+  var notProcessed=[]
 
 
 
 expandedData.forEach((row) => {
   if (row['Officer List'] === "True" || row['Initial Match'] === "True") {
     matchData.push(row);
-  } else {
+  } else if (row['Officer List'] === undefined) {
+    notProcessed.push(row);
+  }
+  else {
     noMatchData.push(row);
   }
 });
@@ -930,6 +1199,7 @@ expandedData.forEach((row) => {
 
 const matchWorksheet = XLSX.utils.json_to_sheet(matchData);
 const noMatchWorksheet = XLSX.utils.json_to_sheet(noMatchData);
+const notProcessedWorksheet = XLSX.utils.json_to_sheet(notProcessed);
   
 
   console.log("\n");
@@ -951,6 +1221,16 @@ const noMatchWorksheet = XLSX.utils.json_to_sheet(noMatchData);
 
     XLSX.utils.book_append_sheet(workbook, noMatchWorksheet, "Business No Match");
     console.log(`Created new Excel sheet: Business No Match`);
+  }
+
+  if (workbook.Sheets["Business Not Processed"]) {
+    // Sheet exists, overwrite it
+    workbook.Sheets["Business Not Processed"] = notProcessedWorksheet;
+    console.log(`Overwrote existing Excel sheet: Business Not Processed`);
+  } else {
+    // Sheet doesn't exist, append new sheet
+    XLSX.utils.book_append_sheet(workbook, notProcessedWorksheet, "Business Not Processed");
+    console.log(`Created new Excel sheet: Business Not Processed`);
   }
 
   XLSX.writeFile(workbook, filePath);
