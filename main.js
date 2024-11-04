@@ -584,6 +584,9 @@ async function main(filePath, businessCall) {
       newData[newDataLength - 1]['First Mobile 2'] = firm['First Mobile'];
       newData[newDataLength - 1]['First Landline 2'] = firm['First Landline'];
       newData[newDataLength - 1]['Second Mobile 2'] = firm['Second Mobile (if applicable)'];
+      if(firm['MATCH'] === 'Yes'){
+        newData[newDataLength - 1]['MATCH'] = 'Yes';
+      }
     }
     else{
       newData.push({ ...firm });

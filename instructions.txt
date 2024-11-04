@@ -64,9 +64,9 @@ Business API:
 
 Person API
 -For each record in ("Sheet1" if not a business call, "Business Match" if business call):
--Your local sqlite database will be checked for a matching first name, last name, mailing address, and city + state
+-Your local sqlite database will be checked for a matching first name, last name, mailing address, and city + state (if a business call then combo of firm, fname, lname, zip constitute a unique record)
 -If there is a matching record in the database, we will extract phone information from the db and store records in a sheet called duplicates.
--Otherwise the application will send the first name, last name, mailing address, and city + state to the person API
+-Otherwise the application will send the first name, last name, mailing address, and city + state to the person API (if business fname, lname, zip only will be sent)
 -If any of this information is missing the application will skip to the next record, and store the record in an incomplete data sheet.
 -The return values parsed from the api response are: first mobile number, first landline number, 
 and possibly second mobile (only if it is the second number returned and a first mobile already exists.)
