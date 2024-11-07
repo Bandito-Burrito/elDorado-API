@@ -916,6 +916,12 @@ async function makeApiCall2(searchName, jurisdictionCode, searchMailing, index, 
             if (companyDetails.officers && companyDetails.officers.length > 0) {
               let officersFound = false;
 
+              companyDetails.officers.sort((a, b) => { //sorts by officer position z to a
+                return b.officer.position.localeCompare(a.officer.position);
+              });
+
+              // console.log('Company Officers:', companyDetails.officers);
+
               companyDetails.officers.forEach(officerData => {
                 
                 const nameObject = parseFullName(officerData.officer.name);
@@ -925,16 +931,18 @@ async function makeApiCall2(searchName, jurisdictionCode, searchMailing, index, 
                   return; // Skip duplicate first + last names
                 }
 
-                if (takenNames >= 2) {
-                  return; // Skip more than 2 officers
+                if (takenNames >= 1) {
+                  return; // Skip more than 1 officers
                 }
 
                 const lastNameDifferentFirst = processedLastNames.has(nameObject.last.toLocaleLowerCase()) && !processedNames.has(fullNameKey);
 
                 if(lastNameDifferentFirst||
-                  (officerData.officer.position!=="treasurer" && 
-                    officerData.officer.position!=="secretary" && 
-                    officerData.officer.position!=="agent")){
+                  (officerData.officer.position=="ceo" || 
+                    officerData.officer.position=="chief executive officer" || 
+                    officerData.officer.position=="agent" ||
+                    officerData.officer.position=="president" ||
+                    officerData.officer.position=="owner")){
                 let newRow = { ...data[index] };
 
                 // Add officer data to the new row
