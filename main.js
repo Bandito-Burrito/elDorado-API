@@ -935,7 +935,8 @@ async function makeApiCall2(searchName, jurisdictionCode, searchMailing, index, 
                   return; // Skip more than 1 officers
                 }
 
-                const lastNameDifferentFirst = processedLastNames.has(nameObject.last.toLocaleLowerCase()) && !processedNames.has(fullNameKey);
+                //const lastNameDifferentFirst = processedLastNames.has(nameObject.last.toLocaleLowerCase()) && !processedNames.has(fullNameKey);
+                const lastNameDifferentFirst = false;
 
                 if(lastNameDifferentFirst||
                   (officerData.officer.position=="ceo" || 
