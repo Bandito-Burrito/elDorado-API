@@ -7,6 +7,35 @@ var parseFullName = require('parse-full-name').parseFullName;
 var stringSimilarity = require("string-similarity");
 
 
+const POSITION_PRIORITY = {
+  'ceo': 1,
+  'chief exec': 1,
+  'chief executive officer': 1, 
+  'director': 1,
+  'officer': 1,
+  'owner': 1,
+  'partner': 1,
+  'president': 1,
+  'president/ceo': 1,
+  'cfo': 2,
+  'chief financial officer': 2,
+  'executive vice president': 2,
+  'incorporator': 2,
+  'incorporator/organizer': 2,
+  'manager': 2,
+  'managing member': 2,
+  'member': 2,
+  'member and manager': 2,
+  'organizer': 2,
+  'vice presi': 2,
+  'vp': 2,
+  'vice president': 2,
+  'vice-president': 2,
+  'agent':3
+  // Add more positions as needed
+};
+
+
 var data = [];
 var expandedData = [];
 var ocAPIcount = 0;
@@ -916,11 +945,19 @@ async function makeApiCall2(searchName, jurisdictionCode, searchMailing, index, 
             if (companyDetails.officers && companyDetails.officers.length > 0) {
               let officersFound = false;
 
-              companyDetails.officers.sort((a, b) => { //sorts by officer position z to a
-                return b.officer.position.localeCompare(a.officer.position);
+              // companyDetails.officers.sort((a, b) => { //sorts by officer position z to a
+              //   return b.officer.position.localeCompare(a.officer.position);
+              // });
+
+              //console.log('Company Officers:', companyDetails.officers);
+
+              companyDetails.officers.forEach(officerData => {
+                const position = officerData.officer.position.toLowerCase();
+                officerData.officer.priority = POSITION_PRIORITY[position] || Infinity;
               });
 
-              // console.log('Company Officers:', companyDetails.officers);
+              const bestPriority = Math.min(...companyDetails.officers.map(o => o.officer.priority));
+
 
               companyDetails.officers.forEach(officerData => {
                 
@@ -931,21 +968,11 @@ async function makeApiCall2(searchName, jurisdictionCode, searchMailing, index, 
                   return; // Skip duplicate first + last names
                 }
 
-                if (takenNames >= 1) {
-                  return; // Skip more than 1 officers
-                }
+                const lastNameDifferentFirst = processedLastNames.has(nameObject.last.toLocaleLowerCase()) && !processedNames.has(fullNameKey);
+                //const lastNameDifferentFirst = false;
 
-                //const lastNameDifferentFirst = processedLastNames.has(nameObject.last.toLocaleLowerCase()) && !processedNames.has(fullNameKey);
-                const lastNameDifferentFirst = false;
-
-                if(lastNameDifferentFirst||
-                  (officerData.officer.position=="ceo" || 
-                    officerData.officer.position=="chief executive officer" || 
-                    officerData.officer.position=="agent" ||
-                    officerData.officer.position=="president" ||
-                    officerData.officer.position=="owner")){
+                if((lastNameDifferentFirst && takenNames < 2) || (bestPriority !== Infinity && officerData.officer.priority === bestPriority && takenNames < 1)){
                 let newRow = { ...data[index] };
-
                 // Add officer data to the new row
                 newRow['Officer List'] = "True";
                 newRow['Officer Name'] = officerData.officer.name;
