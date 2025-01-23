@@ -175,7 +175,7 @@ async function sendFederalLiensToOpenAIAndSaveToExcel(federalLiens, outputPath) 
   
       // For OpenAI v4 library:
       const response = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo",  
+        model: "gpt-4o-2024-08-06",  
         messages: [
           { role: "system", content: instruction },
           { role: "user", content: federalLiensJson },
@@ -205,14 +205,26 @@ async function sendFederalLiensToOpenAIAndSaveToExcel(federalLiens, outputPath) 
     }
   }
 
-function saveToExcel(data, fileName) {
-const worksheet = XLSX.utils.json_to_sheet(data);
-const workbook = XLSX.utils.book_new();
+  function saveToExcel(data, fileName) {
 
-//const outputPath1 = fileName.replace('_ExtractedData.xlsx', 'ExtractedFirms.xlsx');
-//const outputPath2 = fileName.replace('_ExtractedData.xlsx', 'ExtractedPersonal.xlsx');
+    console.log(data);
 
+    const firmsData = data.filter(row => row.FIRM && row.FIRM.trim() !== '');
+    const personalData = data.filter(row => !row.FIRM || row.FIRM.trim() === '');
 
-XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
-XLSX.writeFile(workbook, fileName);
+    if (firmsData.length > 0) {
+        const firmsWorkbook = XLSX.utils.book_new();
+        const firmsWorksheet = XLSX.utils.json_to_sheet(firmsData);
+        XLSX.utils.book_append_sheet(firmsWorkbook, firmsWorksheet, 'Sheet1');
+        const outputPath1 = fileName.replace('_ExtractedData.xlsx', '_ExtractedFirms.xlsx');
+        XLSX.writeFile(firmsWorkbook, outputPath1);
+    }
+
+    if (personalData.length > 0) {
+        const personalWorkbook = XLSX.utils.book_new();
+        const personalWorksheet = XLSX.utils.json_to_sheet(personalData);
+        XLSX.utils.book_append_sheet(personalWorkbook, personalWorksheet, 'Sheet1');
+        const outputPath2 = fileName.replace('_ExtractedData.xlsx', '_ExtractedPersonal.xlsx');
+        XLSX.writeFile(personalWorkbook, outputPath2);
+    }
 }
