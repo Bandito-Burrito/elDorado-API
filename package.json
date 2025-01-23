@@ -15,7 +15,9 @@
   },
   "dependencies": {
     "dotenv": "^16.4.5",
+    "openai": "^4.80.0",
     "parse-full-name": "^1.2.6",
+    "pdf-parse": "^1.1.1",
     "sqlite3": "^5.1.7",
     "string-similarity": "^4.0.4",
     "xlsx": "^0.18.5"

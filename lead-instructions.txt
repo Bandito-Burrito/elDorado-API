@@ -1,0 +1,30 @@
+Start by creating a bookmark folder in your browser with the following links:
+
+1. Sunbiz: https://dos.fl.gov/sunbiz/other-services/data-downloads/corporate-data-file/
+2. Maryland Judiciary records: https://www.mdcourts.gov/data/case/
+More to come later...
+
+Every day, for each bookmark, go to the appropriate website and download the Federal lien data if it is available.
+If you have downloaded new data, use the Format Data button to automate extracting/formatting the data into an Excel file. 
+
+
+------------------------------------------------------------------------------------------------------------------------------
+
+Detailed Download instructions below:
+
+SunBiz.org:
+1. Follow the link above and click continue to download files
+2. Enter the username and password provided on the previous page. 
+
+    Username = Public
+    Password  = PubAccess1845!
+3. Proceed to doc\FLR\DEBTORS\
+4. Sort using the date modified column to quickly identify if any new documents have been released.
+5. Download any new liens as a txt file.
+6. Hit the button in this application and point it to the txt file download.
+
+Maryland Judiciary records:
+1. Click the link above
+2. Use ctrl-shift-r to force the page to refresh (Page can load with old results)
+3. Download this most recent pdf if you have not already.
+4. Hit the button in this application and point it to the pdf file download.

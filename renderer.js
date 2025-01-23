@@ -34,3 +34,7 @@ ipcRenderer.on('log', (event, message) => {
 document.getElementById('open-instructions').addEventListener('click', () => {
   ipcRenderer.send('open-instructions');
 });
+
+document.getElementById('open-second').addEventListener('click', () => {
+  ipcRenderer.send('open-second-window');
+});

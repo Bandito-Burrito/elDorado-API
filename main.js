@@ -5,6 +5,8 @@ const XLSX = require('xlsx');
 const path = require('path');
 var parseFullName = require('parse-full-name').parseFullName;
 var stringSimilarity = require("string-similarity");
+const pdf = require('pdf-parse');
+const fs = require('fs');
 
 
 const POSITION_PRIORITY = {
@@ -64,6 +66,26 @@ function createWindow () {
 }
 
 app.whenReady().then(createWindow)
+
+function createSecondWindow() {
+  const secondWin = new BrowserWindow({
+    width: 600,
+    height: 400,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
+    }
+  });
+  secondWin.loadFile('second.html'); // The separate HTML file you want to load
+}
+
+// Listen for a message from the renderer to open the second window
+ipcMain.on('open-second-window', () => {
+  createSecondWindow();
+});
+
+
+
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -561,6 +583,7 @@ ipcMain.on('open-instructions', () => {
 
     });
 
+
 async function main(filePath, businessCall) {
 
   if(businessCall){
@@ -949,14 +972,13 @@ async function makeApiCall2(searchName, jurisdictionCode, searchMailing, index, 
               //   return b.officer.position.localeCompare(a.officer.position);
               // });
 
-              //console.log('Company Officers:', companyDetails.officers);
+             // console.log('Company Officers:', companyDetails.officers);
 
-              companyDetails.officers.forEach(officerData => {
-                const position = officerData.officer.position.toLowerCase();
-                officerData.officer.priority = POSITION_PRIORITY[position] || Infinity;
-              });
-
-              const bestPriority = Math.min(...companyDetails.officers.map(o => o.officer.priority));
+             companyDetails.officers.forEach(officerData => {
+              const position = officerData.officer.position?.toLowerCase() || '';
+              officerData.officer.priority = POSITION_PRIORITY[position] || Infinity;
+            });
+            const bestPriority = Math.min(...companyDetails.officers.map(o => o.officer.priority));
 
 
               companyDetails.officers.forEach(officerData => {
@@ -1284,3 +1306,21 @@ const notProcessedWorksheet = XLSX.utils.json_to_sheet(notProcessed);
   });
 
 }
+
+
+
+////////////////////////////
+
+//pdf parse
+
+  // 2) Handle "parse-pdf" from renderer
+  ipcMain.handle('parse-pdf', async (event, filePath) => {
+    try {
+      const dataBuffer = fs.readFileSync(filePath);
+      const pdfData = await pdf(dataBuffer); // parse PDF in main
+      return pdfData.text; // Return the entire text to the renderer
+    } catch (err) {
+      console.error('Error parsing PDF in main:', err);
+      throw err; // This will reject on the renderer side
+    }
+  });
